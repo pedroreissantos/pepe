@@ -1,0 +1,84 @@
+
+  PEPE
+
+
+  This is an emulator for the PEPE processor with debugging capabilities.
+  The emulator reads a list of PEPE assembler files and executes them.
+
+  To run use: pepe program.asm pepelib.asm -- arguments
+  for example: pepe fibonacci.asm pepelib.asm -- 12
+
+  In interactive mode use:
+    include filename.asm
+    eof
+   or type pepe instructions followed by EOF:
+    MOV r1, 12
+    MOV r2, 45
+    ADD r1, r2
+    EOF
+   Then use the debugger.
+
+FILES
+  To build the PEPE emulator:
+  	pepe.h		functions, data and macros for PEPE
+  	main.c		argument processing and disassembler
+	interp.c		the interpreter and debugger
+	code.c		symbolic manipulation routines
+	token.l		lexical analyser for assembler files
+	gram.y		grammar analyser for assembler files
+	Makefile	to build the emulator from the above files
+  Files generated (included, just in case)
+  	ver.c		version strings (from Makefile)
+	lex.yy.c	lexical analyser in C (from token.l)
+	y.tab.c		grammar analyser in C (from gram.y)
+	y.tab.h		analyser tokens (from gram.y)
+  Library files (auxiliary files to run programs)
+  	pepelib.asm	startup (calls main and exits) and routines
+			to read and write integers, strings and chars
+	pepelib.c	the C equivalent
+	pepelibc.c	some basic libc routines like strlen, strcpy,
+			strcmp, atoi and small versions of printf and
+			scanf.
+	pepelibc.asm	(this file may be compiled with LCC-4.2 using pepe.md
+			'rcc -target=pepe pepelibc.c > pepelibc.asm)
+  PEPE description for LCC-4.2
+  	pepe.md		(add 'xx(pepe,         pepeIR) \' to bind.c)
+
+
+PEPE-v1 (original version)
+PEPE-v2 (as described in the book)
+PEPE-v3 (new features added)
+  	far JMP/CALL/CALLF is handled automatically by the assembler by
+			using the TEMP register and then jumping indirect.
+			Since labels are used, there is no way to tell if
+			the displacement is larger than 4096.
+	multi-PUSH/POP is a mechanism to PUSH/POP several registers at once.
+			For instance PUSH r3, 3 will PUSH from r3 to r6,
+			likewise POP r3, 3 will POP from r6 to r3.
+			PUSHC can be handled has PUSH r0, 11 and idem for POPC.
+	RET allow a number (0<=K<=30) or register to be used, in order to
+			support Pascal like return method (pcall). The register
+			based RET is a new instruction.
+	displacement JMP/CALL/CALLF when the operation is performed using 
+			registers. A displacement can be added as an immediate
+			0<=K<=30 (stored has K/2) or has a register.
+			This is usefull for Object-oriented languages virtual
+			calls.
+	TEMP is used in MUL/DIV/MOD has a 32bit register extension. In a MUL
+			the 16 high order bits (of the 32 bit result) is always
+			stored in the TEMP register. DIV/MOD operation use TEMP
+			has the 16 high order bits
+			(of the 32 bit first argument) if the B flag is set.
+	SHL/SHR/SHRA are extended to use two registers, in order to allow a<<b.
+	BOUND instruction is added to allow array bound checking for Java
+			and others. The vector base (first argument) must
+			be preceded by the size (in bytes) of the vector,
+			so that the value of the second argument is
+			base<=value<=base+size otherwise a BOUND exception
+			is thrown.
+	EXTEND instruction is added to simplify convertion from byte to word
+			of a signed extended number.
+	. used as current PC in assembler
+			ex. MOV r0, .+20 or MOV r2, .-12 or MOV r5, .
+
+(C)Pedro Reis dos Santos, 2012 (IST, TULisbon)

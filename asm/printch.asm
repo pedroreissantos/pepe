@@ -1,0 +1,14 @@
+MOV r0, 80
+PUSH r0
+CALL printch
+POP r0
+MOV r0, 101
+SWE 245 ; printBYTE
+MOV r0, 100
+SWE 245 ; printBYTE
+MOV r0, 114
+SWE 245 ; printBYTE
+MOV r0, 111
+SWE 245 ; printBYTE
+MOV r0, 10
+SWE 245 ; printBYTE

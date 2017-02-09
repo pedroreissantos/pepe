@@ -1,0 +1,49 @@
+.SUFFIXES: .asm .mem
+LOADLIBS=
+CC=cl
+CFLAGS=/nologo -DYYDEBUG $(EXTRA)
+EXTRA=
+#CFLAGS=-O2 -I$(LIB)
+LEX=flex
+LFLAGS=-l
+YACC=byacc
+YFLAGS=-dv
+DESTDIR=$$HOME/bin
+
+ID=pepe
+VER=1d
+BID=$(ID)-$(VER)
+BIN=$(ID)
+COPYWRITE=$(BID) (C)prs IST,2009 # use with ident
+
+all: $(BIN)
+
+.asm.mem:
+	pepe $< -o $@
+
+BASE= y.tab.obj lex.yy.obj code.obj ver.obj
+$(ID): $(BASE) main.obj interp.obj
+	cl /nologo /opepec.exe $(BASE) main.obj interp.obj $(LOADLIBS)
+
+ver.c: Makefile
+	echo "char *version = \"\$$"Id": $(COPYWRITE) \$$\";" > $@
+	echo "char *lblver = \"$(ID)_$(VER)\";" >> $@
+
+lex.yy.c: token.l y.tab.c
+	$(LEX) $(LFLAGS) token.l
+
+y.tab.c: gram.y
+	$(YACC) $(YFLAGS) gram.y
+
+install:
+	strip $(ID)
+	cp $(ID) $(DESTDIR)
+
+clean:
+	rm -f *.obj core a.out $(BIN) y.tab.* lex.yy.* y.output *.mem ver.c
+	# for i in *.cpt; do rm -f `basename $$i .cpt`; done
+
+backup: clean
+	PWD=`pwd`; CWD=`basename $$PWD`; cd ..; tar cf - $$CWD | gzip -9 > $@/$(BID).tgz
+
+.PHONY: all clean backup install

@@ -1,0 +1,731 @@
+<html>
+<title>Programa&ccedil;&atilde;o do processador PEPE</title>
+<body>
+
+O processador PEPE (Processador Especial Para Ensino) de 16 bits
+&eacute; descrito no livro Arquitectura de Computadores
+dos Profs. Jos&eacute; Delagdo e Carlos Ribeiro (ISBN 978-972-722-207-0),
+sendo utilizado na disciplina de Arquitectura de Computadores
+no IST-Taguspark.
+Este documento descreve sucintamente o processador do ponto de vista do
+programador e n&atilde;o dispensa a consulta do livro referido.
+Tam&eacute;m se pressup&otilde;e algum conhecimento pr&eacute;vio de <i>assembly</i>.
+
+<H1>Arquitectura do processador</H1>
+ O PEPE &eacute; processador did&aacute;ctico de 16 bits, onde os registos e os endere&ccedil;os s&atilde;o todos
+ de 16 bits, tal como as instru&ccedil;&otilde;es.
+ Embora seja limitativo para programa&ccedil;&atilde;o gen&eacute;rica os valores utilizados s&atilde;o mais
+ manej&aacute;veis que manipular valores de 32bits, ou 8 d&iacute;gitos hexadecimais.
+ O conjunto de instru&ccedil;&otilde;es &eacute; muito regular e suficiente para a maioria das
+ aplica&ccedil;&otilde;es did&aacute;cticas.
+ O alinhamento de dados e instru&ccedil;&otilde;es &eacute; feito a 16 bits.
+ Os registos s&atilde;o uniformes, isto &eacute; certas instru&ccedil;&otilde;es n&atilde;o s&atilde;o obrigadas a utilizar
+ registos espec&iacute;ficos.
+ A nota&ccedil;&atilde;o RISC (Reduced Instruction Set Computer) com a utiliza&ccedil;&atilde;o de um
+ 3&orfm; operando permite que nenhum dos argumentos seja destru&iacute;do pela opera&ccedil;&atilde;o.
+ Para simplificar o processador n&atilde;o tem virgula flutuante, mas tal s&oacute; 
+ &eacute; necess&aacute;rio para c&aacute;lculo cient&iacute;fico.
+
+ <H2>Registos</H2>
+
+ O processador &eacute; constitu&iacute;do, em modo utilizador, por um contador de programa (PC)
+ e 16 registos (r0 a r15).
+ Alguns destes registos est&atilde;o previamente atribu&iacute;dos a fun&ccedil;&otilde;es espec&iacute;ficas
+ <UL>
+ <LI>rl (ou r11) em leaf-procedures (CALLF e RETF) e como frame-pointer.
+ <LI>sp (ou r12) 2 bytes de cada vez, sempre alinhado
+ <LI>re (ou r13) registo de estado que inclui flags (ou bandeiras)
+ <LI>bte (ou r14) Base da tabela de excep&ccedil;&otilde;es.
+ <LI>temp (ou r15) Tempor&aacute;rio para algumas instru&ccedil;&otilde;es.
+ </UL>
+ pelo existem 11 registos para utiliza&ccedil;&atilde;o livre (r0 a r10).
+
+ <H2>Flags (ou bandeiras)</H2>
+   Cada um dos 16 bits do registo RE (ou r13) corresponde a uma flag (ou bandeira)
+<TABLE border>
+<TH>bit<TH>sigla<TH>nome<TH>descri&ccedil;&atilde;o<TH><TD>
+<TR><TD>0 <TD>Z  <TD>Zero		<TD>Colocado a um quando o resultado de uma opera&ccedil;&atilde;o da ALU &eacute; zero.
+<TR><TD>1 <TD>N  <TD>Negativo		<TD>Colocado a um quando o resultado de uma opera&ccedil;&atilde;o da ALU &eacute; negativo.
+<TR><TD>2 <TD>C  <TD>Carry (Transporte)	<TD>Colocado a um quando o resultado de uma opera&ccedil;&atilde;o gera transporte.
+<TR><TD>3 <TD>V  <TD>Overflow (Excesso)	<TD>Colocado a um quando o resultado de uma opera&ccedil;&atilde;o &eacute; demasiado grande (em m&oacute;dulo) para ser representado correctamente.
+<TR><TD>4 <TD>A  <TD>Auxiliar		<TD>Se a 1 a divis&atilde;o e resto usam um dividendo de 32 bits, com os 16 mais elevados em TEMP (ou r15)
+<TR><TD>5 <TD>TV <TD>Trap on Overflow	<TD>Se a 1 gera interrup&ccedil;&atilde;o em vez de colocar V=1
+<TR><TD>6 <TD>TD <TD>Trap on DIV0	<TD>Se a 1 gera interrup&ccedil;&atilde;o em divis&otilde;es por 0
+<TR><TD>7 <TD>IE <TD>Enable interrupts	<TD>Se a 1 permite interrup&ccedil;&otilde;es externas.
+<TR><TD>8 <TD>IE0<TD>Interrupt enable 0	<TD>Se a 1 permite a interrup&ccedil;&atilde;o externa INT0.
+<TR><TD>9 <TD>IE1<TD>Interrupt enable 1	<TD>Se a 1 permite a interrup&ccedil;&atilde;o externa INT1.
+<TR><TD>10<TD>IE2<TD>Interrupt enable 2	<TD>Se a 1 permite a interrup&ccedil;&atilde;o externa INT2.
+<TR><TD>11<TD>IE3<TD>Interrupt enable 3	<TD>Se a 1 permite a interrup&ccedil;&atilde;o externa INT3.
+<TR><TD>12<TD>DE <TD>DMA enable		<TD>Se a 1 permite o atendimento de pedidos de DMA.
+<TR><TD>13<TD>NP <TD>N&iacute;vel de protec&ccedil;&atilde;o	<TD>NP=1 para modo utilizador e NP=0 para sistema.
+<TR><TD>14<TD>R0 <TD>Reservado 0	<TD>Reservado para uso futuro.
+<TR><TD>15<TD>R1 <TD>Reservado 1	<TD>Reservado para uso futuro.
+</TABLE>
+
+ <H2>Interrup&ccedil;&otilde;es</H2>
+   Quando &eacute; gerada uma interrup&ccedil;&atilde;o, a base do vector de interrup&ccedil;&otilde;es
+   &eacute; indicado pelo registo BTE (ou r14).
+   No entanto, se BTE == 0 e bte+XXX == 0, onde XXX representa o
+   delocamento no vector para a interrup&ccedil;&atilde;o em quest&atilde;o, o
+   processamento &eacute; apanhado pelo simulador.
+   Apenas os argumentos iguais ou superiores a 240, na instru&ccedil;&atilde;o <TT>SWE</TT>
+   podem ser interceptados pelo simulador (nas condi&ccedil;&otilde;es acima).
+   <p>
+   Como o simulador n&atilde;o pussui pinos exteriores, estes podem ser simulador atrav&eacute;s
+   de interrup&ccedil;&otilde;es, por exemplo utilizado o comando <B>kill</B> em <B>unix</B>.
+   <UL>
+   <LI>SIGABRT gera INT0 (com IE=1 e IE0=1) para o endere&ccedil;o *(bte+2h)
+   <LI>SIGINT gera INT1 (com IE=1 e IE1=1) para o endere&ccedil;o *(bte+4h)
+   <LI>SIGHUP (s&oacute; em UNIX) gera INT2 (com IE=1 e IE2=1) para o endere&ccedil;o *(bte+6h)
+   <LI>SIGALRM (s&oacute; em UNIX) gera INT3 (com IE=1 e IE3=1) para o endere&ccedil;o *(bte+8h)
+     (implica SWE 249 com r0 em segundos)
+   </UL>
+   <p>
+   <UL>
+   <LI>oparit gera EXCESS (com TV=1) para o endere&ccedil;o *(bte+Ah)
+   <LI>divis&atilde;o gera DIV0 para o endere&ccedil;o *(bte+Ch)
+   <LI>software gera SWE para o endere&ccedil;o *(bte+Eh):<br>
+     &eacute; apanhado pelo simulador: se n&atilde;o existir
+     na sua tabela &eacute; relan&ccedil;ado para bte+Eh.
+   <LI>BOUND se a instru&ccedil;&atilde;o BOUND
+   </UL>
+   <p>
+   Outras interrup&ccedil;&otilde;es n&atilde;o s&atilde;o mascar&aacute;veis
+   <UL>
+   <LI>invalid opcode gera OPC para o endere&ccedil;o *(bte+10h)
+   <LI>acesso a dados em endere&ccedil;o &iacute;mpar gera DALIGN para o endere&ccedil;o *(bte+12h)
+   <LI>acesso a instru&ccedil;&otilde;es em endere&ccedil;o &iacute;mpar gera IALIGN para o endere&ccedil;o *(bte+14h)
+   <LI>DPAG acesso a dados &agrave; mem&oacute;ria virtual e a p&aacute;gina n&atilde;o est&aacute; em mem&oacute;ria
+   <LI>IPAG busca de instru&ccedil;&atilde;o e a p&aacute;gina n&atilde;o est&aacute; em mem&oacute;ria
+   <LI>DPROT acesso do utilizado a p&aacute;gina de sistema
+   <LI>IPROT acesso do utilizador a c&oacute;digo de sistema
+   <LI>EWRITE escrita em p&aacute;gina protegida
+   <LI>? ESYS execu&ccedil;&atilde;o de uma instru&ccedil;&atilde;o de n&iacute;vel de sistem em modo utilizador
+   <LI>DFAIL
+   <LI>IFAIL
+   <LI>DTLB
+   <LI>ITLB
+   </UL>
+<H1>Directivas de assembler</H1>
+
+ A directivas de <I>assembler</I> distinguem-se das instru&ccedil;&otilde;es pois
+ s&atilde;o apenas utilizadas para preencher a mem&oacute;ria antes do in&iacute;cio do
+ programa.
+ Assim, as estas directivas nunca s&atilde;o executadas pelo processador.
+
+ <H2>Identificadores</H2>
+ Os identificadores s&atilde;o utilizados para referir valores, como
+ constantes literais e posi&ccedil;&otilde;es de mem&oacute;ria, por nome em vez do
+ seu valor num&eacute;rico.
+ Os identificadores seguem as mesmas regras dos identificadores
+ na linguagem <B>C</B> (tal como <B>Java</B> ou <B>C++</B>), e
+ podem ser descritos pela express&atilde;o regular
+ <TT>[A-Za-z_.][A-Za-z0-9_]*</TT>.
+ Notar que a utiliza&ccedil;&atilde;o do car&aacute;cter '.' (ponto) &eacute; uma extens&atilde;o
+ da vers&atilde;o 3 do PEPE, activ&aacute;vel com a op&ccedil;&atilde;o <B>-n</B> do
+ simulador.
+
+ <H2>Labels (ou etiquetas)</H2>
+ Os labels (ou etiquetas) permitem designar posi&ccedil;&otilde;es de mem&oacute;ria
+ sem ter de saber o seu valor num&eacute;rico.
+ Na realidade, o seu valor final s&oacute; &eacute; determinado pelo <B>linker</B>
+ (ou editor de liga&ccedil;&otilde;es) depois do c&oacute;digo ter sido montado (<B>assembled</B>).
+
+ Um label &eacute; definido atrav&eacute;s de um identificador seguido de ':'
+ (car&aacute;cter dois pontos), sendo posteriormente referido apenas pelo seu nome.
+ Como o <B>assmbly</B> do PEPE n&atilde;o inclui directivas para determinar se
+ uma etiqueta &eacute; global ao programa ou local ao ficheiro, optou por
+ considerar como locais as etiquetas iniciados por '.' (ponto).
+ Assim, ao juntar dois ficheiros j&aacute; n&atilde;o perigo de existir um mesmo
+ s&iacute;mbolo local definido igualmente noutro ficheiro.
+ Desta forma, as etiquetas para saltos condicionais s&atilde;o locais, por exemplo,
+ enquanto que o nome de rotinas ou vari&aacute;veis globais n&atilde;o se iniciam por '.'
+ por forma a poderem ser referidas entre ficheiros.
+ 
+ <H2>Literais inteiros</H2>
+ As constantes literais inteiras podem ser descritas 
+ nas quatro bases de representa&ccedil;&atilde;o num&eacute;ria mais habituais
+ (bin&aacute;rio, octal, decimal e hexadecimal) ou como um
+ caracter ASCII.
+
+<TABLE border>
+<TH>base de representa&ccedil;&atilde;o<TH>express&atilde;o regular<TH>exemplo<TH>valor decimal<TH><TD>
+<TR><TD>bin&aacute;rio<TD>[01]+"b"	<TD>001101b	<TD>13
+<TR><TD>octal<TD>[0-7]+"o"	<TD>177o	<TD>127
+<TR><TD>hexadecimal<TD>[0-9a-fA-F]+"h"	<TD>A0h	<TD>160
+<TR><TD>decimal<TD>[0-9]+"d"?	<TD>123		<TD>123
+<TR><TD>ASCII<TD>\'[^']\'	<TD>'5'		<TD>53
+</TABLE>
+ Al&eacute;m dos c&oacute;digos ASCII tamb&eacute;m s&atilde;o aceites codifica&ccedil;&otilde;es
+ ISO-LATIN-15 ou UNICODE dependendo da forma como o
+ simulador foi gerado.
+
+ <H2>Constantes simb&oacute;licas</H2>
+ Al&eacute;m das constantes literais &eacute; poss&iacute;vel atribuir nomes (identificadores) &agrave;s constantes.
+ A directiva<BR>
+ <B>id EQU constante</B><BR>
+ permite utilizar nas instr&ccedil;&otilde;es subsequentes o identificador e n&atilde;o a constante literal.
+ Desta forma, a altera&ccedil;&atilde;o da constante propaga-se por todas as suas ocurr&ecirc;ncias.
+ Por exemplo,<BR>
+ <TT>max EQU 144</TT><BR>
+ <TT>MOV r1, max</TT><BR>
+
+ <H2>Dados n&atilde;o iniciados</H2>
+ A cria&ccedil;&atilde;o de blocos de mem&oacute;ria n&atilde;o iniciada,
+ equivalente aos vectores globais de <B>C</B>, 
+ recorre &agrave; declara&ccedil;&atilde;o <TT>TABLE word</TT>.
+ Cada <TT>word</TT> ocupa 16 bits (ou 2 bytes) pelo que a declara&ccedil;&atilde;o global <B>C</B>
+ <TT>short buf[80];</TT> pode ser codificada como<BR>
+ <TT>TABLE 80</TT><BR>
+ mas se for <TT>char buf[31];</TT> ter&aacute; de ser declarado como<BR>
+ <TT>TABLE 16</TT><BR>
+ ocupando 32 bytes, para manter a mem&oacute;ria alinhada mas deperdi&ccedil;ando um byte no fim do bloco.
+
+ <H2>Dados iniciados</H2>
+ A cria&ccedil;&atilde;o vari&aacute;veis escalares iniciadas, ou de blocos de mem&oacute;ria iniciados,
+ recorre &agrave; declara&ccedil;&atilde;o <TT>WORD inteiro</TT>.
+ Cada <TT>inteiro</TT> ocupa 16 bits (ou 2 bytes) pelo que a declara&ccedil;&atilde;o global <B>C</B>
+ <TT>short vec[12] = { 23, 34, 45 };</TT> pode ser codificado como<BR>
+ <TT>WORD 23</TT><BR>
+ <TT>WORD 34</TT><BR>
+ <TT>WORD 45</TT><BR>
+ <TT>TABLE 9</TT><BR>
+ alternativamente, pode substituir o <TT>TABLE 9</TT> por 9 declara&ccedil;&otilde;es <TT>WORD 0</TT>,
+ uma vez que os &uacute;ltimos 9 valores do vector devem ser iniciados a zero.
+
+ <H2>Cadeias de caracteres</H2>
+ A declara&ccedil;&atilde;o de cadeias de caracteres pode ser efectuada com sucessivas declara&ccedil;&otilde;es <TT>word</TT>.
+ No entanto, a sua larga utiliza&ccedil;&atilde;o levou &agrave; cria&ccedil;&atilde;o de uma representa&ccedil;&atilde;o mais compacta.
+ A cria&ccedil;&atilde;o de uma cadeia de caracteres utiliza a <TT>STRING</TT> seguida de uma lista
+ de valores separados por v&iacute;rgulas.
+ Cada um destes valores pode ser um literal inteiro, tal como definido acima, ou uma sequ&ecirc;ncia de
+ caracteres delimitados por aspas.
+ As sequ&ecirc;ncias de caracteres seguem as mesmas regras da linguagem <B>C</B>,
+ cuja express&atilde;o regular &eacute; <TT>\"([^\\\"]|\\.)*\"</TT>, mas n&atilde;o incluem o terminador <I>null</I>.
+ Assim, a cadeias de caracteres <TT>"Hello"</TT> em <B>C</B> pode ser codificada como a sequ&ecirc;ncia<BR>
+ <TT>STRING 'H', "ello", 0</TT><BR>
+
+ <H2>Endere&ccedil;o de origem</H2>
+ A directiva <TT>PLACE</TT> permite que as instru&ccedil;&otilde;es, ou os dados, sejam
+ gerados a partir desta instru&ccedil;&atilde;o.
+ Por exemplo,<br>
+ <TT>PLACE 100</TT><BR>
+ <TT>rotina:</TT><BR>
+ <TT>  PUSH SP</TT><BR>
+ <TT>  ...</TT><BR>
+ coloca o in&iacute;cio da <TT>rotina</TT> no endere&ccedil;o <TT>100</TT>.
+ Da mesma forma,<BR>
+ <TT>PLACE 300</TT><BR>
+ <TT>buf:</TT><BR>
+ <TT>TABLE 80</TT><BR>
+ cria um vector n&atilde;o inicializado a partir do endere&ccedil;o <TT>300</TT>.
+ <P>
+ Notar que com o simulador esta directiva <B>n&tilde;o</B> deve ser
+ usada em programa&ccedil;&atilde;o geral para evitar que dois bocados de c&oacute;digo
+ sejam colocados na mesma posi&ccedil;&atilde;o.
+ O <I>assembler</I> do simulador encarrega-se de arrumar o c&oacute;digo
+ e os dados por forma a que n&atilde;o se sobreponham.
+ A directiva pode ser neces&aacute;ria para construir a tabela de interrup&ccedil;&otilde;es
+ num endere&ccedil;o espec&iacute;fico ou outras tarefas de sistema.
+
+ <H2>Inclus&atilde;o de ficheiros</H2>
+ Para facilitar o desenvolvimento, o simulador permite a utiliza&ccedil;&atilde;o
+ de uma directiva <TT>include</TT> que permite partilhar c&oacute;digo de
+ uma rotina de biblioteca comum a v&aacute;rios programas.
+ Por exemplo,<BR>
+ <TT>include pepelib.asm</TT><BR>
+ permite ter acesso &agrave;s chamadas ao sistema do simulador como
+ fun&ccedil;&otilde;es de biblioteca.
+
+ <H2>Assembler interactivo</H2>
+ O assembler possui ainda outras directivas para utiliza&ccedil;&atilde;o, principalmente,
+ em modo interactivo:
+ <UL>
+ <LI>help: imprime uma breve explica&ccedil;&atilde;o do assembly
+ <LI>version: imprime a vers&atilde;o do simulador
+ <LI>exit: sai do simulador sem processar o c&oacute;digo
+ <LI>eof: termina o introdu&ccedil;&atilde;o de instru&ccedil;&otilde;es <I>assembly</I> e invoca
+ 	sucessivamente o <I>assembler</I>, <I>linker</I> e <I>debugger</I>,
+	se n&atilde;o forem detectados erros no processo.
+ </UL>
+ O modo interactivo do simulador &eacute; acedido se nenhum ficheiro <I>assembly</I>
+ for indicado na sua invoca&ccedil;&atilde;o.
+
+<H1>Instru&ccedil;&otilde;es</H1>
+
+ Um nibble ocupa 4 bits, permitindo valores entre 0 e 15,
+ pelo que pode ser codificado como um digito hexadecimal de 0 a F (ou f).
+ Cada instru&ccedil;&atilde;o &eacute; codificada em 2 bytes, ou seja 4 nibbles.
+ Por exemplo <TT>ADD r2, r4</TT> &eacute; codifcada como <B>0x5024</B>.
+   <p>
+ Algumas instru&ccedil;&otilde;es, designadas por <B>v3</B> (vers&atilde;o 3), s&oacute; est&atilde;o dispon&iacute;veis
+ quando o programa &eacute; invocado com a op&ccedil;&atilde;o <B>-n</B>.
+ Estas instru&ccedil;&otilde;es s&atilde;o necess&aacute;rias para a execu&ccedil;&atilde;o de programas gerados a partir de <B>C</B>,
+ utilizando por exemplo a extens&atilde;o (fornecida) ao compilador <B>lcc</B>, uma vez que as instru&ccedil;&otilde;es
+ originais do <B>pepe</B> s&atilde;o insuficientes.
+   <p>
+ Nas tabelas que se seguem inclui-se a codifica&ccedil;&atilde;o hexadecimal de cada instru&ccedil;&atilde;o, a instru&ccedil;&atilde;o <I>assembly</I>
+ para a gerar, o efeito da instru&ccedil;&atilde;o e uma breve descri&ccedil;&atilde;o da sua funcionalidade.
+ Na codifica&ccedil;&atilde;o, os valores entre chavetas devem ser substitu&iacute;dos pelo valor utilizado em cada instru&ccedil;&atilde;o espec&iacute;fica.
+ Por exemplo, <TT>ADD r2, 4</TT> &eacute; representrado pelo valor <TT>0x5124</TT>, pois <TT>{</TT><B>d</B><TT>}</TT>
+ &eacute; substitu&iacute;do pelo n&uacute;mero do registo <TT>r</TT><B>2</B> e constante <TT>{</TT><B>k</B><TT>}</TT> &eacute; substitu&iacute;da pela
+ constante <B>4</B>.
+ Notar que se a constante for negativa a representa&ccedil;&atilde;o t&ecirc;m o bit mais significativo a 1, pelo que <TT>ADD r2, -7</TT>
+ &eacute; representado pelo valor <TT>0x5129</TT>.
+ A indica&ccedil;&atilde;o do valor <B>X</B> significa que qualquer pode ser utilizado, embora por raz&otilde;es de compatibilidade futura
+ se aconselhe o preenchimento destes <I>nibbles</I> com o valor <B>zero</B>.
+ A gama de valores de cada constante que pode ser utilziada nas instru&ccedil;&otilde;es que utilizam valores literais imediatos &eacute;
+ apresentado no fim de cada tabela.
+
+ <H2>Aritm&eacute;tica</H2>
+<TABLE border>
+<TH>opcode		<TH>assembly    <TH>efeito
+					<TH>descri&ccedil;&atilde;o<TH><TD>
+<TR><TD>0x50{d}{s}	<TD>ADD Rd, Rs	<TD>Rd = Rd + Rs
+					<TD>soma de registos
+<TR><TD>0x51{d}{k}	<TD>ADD Rd, k	<TD>Rd = Rd + k:-8..+7
+					<TD>soma de registo com constante
+<TR><TD>0x52{d}{s}	<TD>ADDC Rd, Rs	<TD>Rd = Rd + Rs + C
+					<TD>soma de registos com transporte
+<TR><TD>0x53{d}{s}	<TD>SUB Rd, Rs	<TD>Rd = Rd - Rs
+					<TD>subtra&ccedil;&atilde;o de registos
+<TR><TD>0x54{d}{k}	<TD>SUB Rd, k	<TD>Rd = Rd - k:-8..+7
+					<TD>subtra&ccedil;&atilde;o de registo com constante
+<TR><TD>0x55{d}{s}	<TD>SUBB Rd, Rs	<TD>Rd = Rd - Rs - C
+					<TD>subtra&ccedil;&atilde;o de registos com transporte
+<TR><TD>0x56{d}{s}	<TD>CMP Rd, Rs	<TD>Rd - Rs
+					<TD>compara&ccedil;&atilde;o de registos
+<TR><TD>0x57{d}{k}	<TD>CMP Rd, k	<TD>Rd - k:-8..+7
+					<TD>compara&ccedil;&atilde;o de registo com constante
+<TR><TD>0x58{d}{s}	<TD>MUL Rd, Rs	<TD>Rd = Rd * Rs
+					<TD>multiplica&ccedil;&atilde;o de registos
+<TR><TD>0x59{d}{s}	<TD>DIV Rd, Rs	<TD>Rd = Rd / Rs
+					<TD>divis&atilde;o de registos
+<TR><TD>0x5A{d}{s}	<TD>MOD Rd, Rs	<TD>Rd = Rd % Rs
+					<TD>resto da divis&atilde;o de registos
+<TR><TD>0x5B{d}X	<TD>NEG Rd	<TD>Rd = -Rd
+					<TD>nega&ccedil;&atilde;o de registo (complemento para dois)
+</TABLE>
+onde <B>k: -8 .. +7</B> e <B>X</B> representa qualquer valor.
+ <H2>Bit a bit</H2>
+<TABLE border>
+<TH>opcode  <TH>assembly    <TH>efeito      <TH>descri&ccedil;&atilde;o<TH><TD>
+<TR><TD>0x60{d}{s}	<TD>AND Rd, Rs	<TD>Rd = Rd &amp; Rs
+					<TD><B>E</B> bit a bit
+<TR><TD>0x61{d}{s}	<TD>OR Rd, Rs	<TD>Rd = Rd | Rs
+					<TD><B>OU</B> bit a bit
+<TR><TD>0x62{d}X	<TD>NOT Rd	<TD>Rd = ~ Rd
+					<TD>nega&ccedil;&atilde;o bit a bit (complemento para um)
+<TR><TD>0x63{d}{s}	<TD>XOR Rd, Rs	<TD>Rd = Rd ^ Rs
+					<TD><B>OU</B> exclusivo bit a bit
+<TR><TD>0x64{d}{s}	<TD>TEST Rd, Rs	<TD>Rd = Rd &amp; Rs
+					<TD>teste bit a bit
+<TR><TD>0x65{d}{s}	<TD>BIT Rd, n	<TD>Z = (Rd &gt;&gt; n) ^ 1
+					<TD>verifica se o n-&eacute;simo bit est&aacute; a 1
+<TR><TD>0x66{d}{n}	<TD>SET Rd, n	<TD>Rd = Rd | (1 &lt;&lt; n)
+					<TD>coloca o n-&eacute;simo bit a 1
+<TR><TD>0x67{d}{n}	<TD>CLR Rd, n	<TD>Rd = Rd &amp; ~(1 &lt;&lt; n)	flags=Z,N(, outra se Rd==RE)
+					<TD>coloca o n-&eacute;simo bit a 0
+<TR><TD>0x68{d}{n}	<TD>CPL Rd, n	<TD>Rd = Rd ^ (1 &lt;&lt; n)
+					<TD>troca o n-&eacute;simo bit
+<TR><TD>0x69{d}{n}	<TD>SHR Rd, n	<TD>Rd = Rd &gt;&gt;&gt; n:0..15 (unsigned)
+					<TD>deslocamento para a direita sem sinal de n bits
+<TR><TD>0x6B{d}{s}	<TD>SHR Rd, Rs	<TD>Rd = Rd &gt;&gt;&gt; Rs (unsigned) [v3]
+					<TD>deslocamento para a direita sem sinal de Rs bits
+<TR><TD>0x6A{d}{n}	<TD>SHL Rd, n	<TD>Rd = Rd &lt;&lt; n:0..15
+					<TD>deslocamento para a esquerda sem sinal de n bits
+<TR><TD>0x5F{d}{s}	<TD>SHL Rd, Rs	<TD>Rd = Rd + Rs [v3]
+					<TD>deslocamento para a esquerda sem sinal de Rs bits
+<TR><TD>0x5C{d}{n}	<TD>SHRA Rd, n	<TD>Rd = Rd &gt;&gt; n:0..15
+					<TD>deslocamento para a direita aritm&eacute;tico de n bits
+<TR><TD>0x5E{d}{s}	<TD>SHRA Rd, Rs	<TD>Rd = Rd &gt;&gt; Rs [v3]
+					<TD>deslocamento para a direita aritm&eacute;tico de n bits
+<TR><TD>0x5D{d}{n}	<TD>SHLA Rd, n	<TD>Rd = Rd &lt;&lt; n:0..15
+					<TD>deslocamento para a esquerda aritm&eacute;tico de n bits
+<TR><TD>0x6C{d}{n}	<TD>ROR Rd, n	<TD>Rd = Rd + Rs
+					<TD>rota&ccedil;&atilde;o para a direita de n bits
+<TR><TD>0x6D{d}{n}	<TD>ROL Rd, n	<TD>Rd = Rd + Rs
+					<TD>rota&ccedil;&atilde;o para a esquerda de n bits
+<TR><TD>0x6E{d}{n}	<TD>RORC Rd, n	<TD>Rd = Rd + Rs
+					<TD>rota&ccedil;&atilde;o para a direita atrav&eacute;s do transporte de n bits
+<TR><TD>0x6F{d}{n}	<TD>ROLC Rd, n	<TD>Rd = Rd + Rs
+					<TD>rota&ccedil;&atilde;o para a esquerda atrav&eacute;s do transporte de n bits
+</TABLE>
+onde <B>n: 0 .. 15</B> e <B>X</B> representa qualquer valor.
+
+ <H2>Transfer&ecirc;ncia de dados</H2>
+<TABLE border>
+<TH>opcode  <TH>assembly    <TH>efeito      <TH>descri&ccedil;&atilde;o<TH><TD>
+<TR><TD>0x7{d}{s}{off/2} <TD>MOV Rd, [Rs + off]	<TD>Rd = Rs[off] <TD>Carregamento baseado
+<TR><TD>0x7{d}{s}0	 <TD>MOV Rd, [Rs]	<TD>Rd = *Rs	 <TD>Carregamento indirecto
+<TR><TD>0x8{d}{s}{i}	 <TD>MOV Rd, [Rs + Ri]	<TD>Rd = Rs[Ri]	 <TD>Carregamento indexado
+<TR><TD>0x9{s}{d}{off/2} <TD>MOV [Rd + off], Rs	<TD>Rd[off] = Rs <TD>Salvaguarda baseada
+<TR><TD>0x9{s}{d}0	 <TD>MOV [Rs], Rs	<TD>*Rd = Rs	 <TD>Salvaguarda indirecta
+<TR><TD>0xA{s}{d}{i}	 <TD>MOV [Rd + Ri], Rs	<TD>Rd[Ri] = Rs	 <TD>Salvaguarda indexada
+<TR><TD>0xC{d}{k}	 <TD>MOVL Rd, k:-128..+127 <TD>Rd = k	 <TD>Copia a constante para o registo (com extens&atilde;o de sinal)
+<TR><TD>		<TD>MOV  Rd, k:-128..+127 <TD>Rd = k	 <TD>Copia a constante para o registo (com extens&atilde;o de sinal)
+<TR><TD>0xD{d}{K}	<TD>MOVH Rd, K:0..255	<TD>Rd = (K &lt;&lt; 8) | (Rd &amp; 0xFF) <TD>Preenche o byte superior (sem alterar o inferior)
+<TR><TD>0xB0{d}{s}	<TD>MOVB Rd, [Rs]	<TD>Rd = *((unsigned char*)Rs)	<TD>carrega byte (sem extens&atilde;o de sinal)
+<TR><TD>0xB1{d}{s}	<TD>MOVB [Rd], Rs	<TD>*((char*)Rd) = Rs	<TD>guarda byte (Rs &amp; 0xF)
+<TR><TD>0xB2{d}{s}	<TD>MOVBS Rd, [Rs]	<TD>Rd = *((char*)Rs)	<TD>carrega byte com extens&atilde;o de sinal
+<TR><TD>0xB3{d}{s}	<TD>MOV Rd, Rs		<TD>Rd = Rs		<TD>copia de registos
+<TR><TD>0xB4{d}{s}	<TD>MOV Ad, Rs		<TD>Rd = Rs		<TD>copia de registos
+<TR><TD>0xB5{d}{s}	<TD>MOV Rd, As		<TD>Rd = Rs		<TD>copia de registos
+<TR><TD>0xB6{d}X	<TD>MOV Rd, USP		<TD>Rd = Rs		<TD>copia o valor do registo SP em modo utilizador
+<TR><TD>0xB7X{s}	<TD>MOV USP, Rs		<TD>Rd = Rs		<TD>copia o valor para registo SP em modo utilizador
+<TR><TD>0xB8{d}{s}	<TD>SWAP Rd, Rs		<TD>Rd = Rs		<TD>troca de registos
+<TR><TD>0xB9{d}{s}	<TD>SWAP [Rd], Rs	<TD>*Rd = Rs		<TD>troca entre registo e mem&oacute;ria
+<TR><TD>		<TD>SWAP Rd, [Rs]	<TD>Rd = *Rs		<TD>troca entre mem&oacute;ria e registo
+<TR><TD>0xBA{s}0	<TD>PUSH Rs		<TD>*--SP=Rs		<TD>copia o valor do registo Rd para a pilha
+<TR><TD>0xBA{s}{n}	<TD>PUSH Rs, n:0..15	<TD>...			<TD>os bits de n indicam quais os registos a guardar na pilha	[v3]
+<TR><TD>0xBB{d}0	<TD>POP Rd		<TD>Rd = *SP++		<TD>retira da pilha o valor que guarda em Rd
+<TR><TD>0xBB{d}{n}	<TD>POP Rd, n:0..15	<TD>...			<TD>os bits de n indicam quais os registos a retirar na pilha	[v3]
+<TR><TD>0xBCXX		<TD>PUSHC		<TD>...			<TD>guarda todos os registos na pilha
+<TR><TD>0xBDXX		<TD>POPC		<TD>...			<TD>retira todos os registos da pilha
+<TR><TD>0xBE{d}{d}	<TD>EXTEND Rd		<TD>((Rd &amp; 0x80) == 0) ? Rd &amp;= 0xFF : Rd |= 0xFF00
+			<TD>extende o sinal de um caracter para um valor inteiro
+<TR><TD>0xBF{b}{s}	<TD>BOUND Rb, Rs	<TD>(*(Rd-2) &lt; Rs) ? throw BOUND
+			<TD>antes de aceder a Rb[Rs] deve ser verificado se o acesso &eacute; v&aacute;lido:
+ 	Rd &eacute; o endere&ccedil;o base do vector e a sua dimens&atilde;o encontra-se na palavra anterior
+	Rs &eacute; o deslocamento n&atilde;o negativo (sem sinal)
+</TABLE>
+onde <B>off: -32 .. 31</B>, <B>K: 0 .. 255</B>, <B>n: 0 .. 15</B>, <B>k: -128 .. 127</B> e <B>X</B> representa qualquer valor.
+
+ <H2>Fluxo de controlo</H2>
+<TABLE border>
+<TH>opcode  <TH>assembly    <TH>efeito      <TH>descri&ccedil;&atilde;o<TH><TD>
+<TR><TD>0x00XX		<TD>NOP		<TD>			 <TD>n&atilde;o produz altera&ccedil;&otilde;es
+<TR><TD>0x01X{k}	<TD>SWE k	<TD> *--SP=RE; *--SP=PC; PC=PC+2*k <TD>interrup&ccedil;&atilde;o de software
+<TR><TD>0x020{s}	<TD>CALL Rs	<TD> *--SP=PC; PC=PC+2*OFF<TD>chamada a rotina
+<TR><TD>0x02{off/2}{s}	<TD>CALL Rs + off <TD> *--SP=PC; PC=Rs+2*off<TD>chamada baseada a rotina 	[v3]
+<TR><TD>0x09{i}{s}	<TD>CALL Rs + Ri <TD> *--SP=PC; PC=Rs+Ri <TD>chamada indexada a rotina 	[v3]
+<TR><TD>0x3{OFF}	<TD>CALL label	<TD> *--SP=PC; PC=PC+2*OFF<TD>chamada a rotina
+<TR><TD>0x030{s}	<TD>CALLF Rs	<TD> Rl=PC; PC=Rs	 <TD>chamada a rotina final
+<TR><TD>0x03{off/2}{s}	<TD>CALLF Rs + off <TD> Rl=PC; PC=Rs+off <TD>chamada baseada a rotina final	[v3]
+<TR><TD>0x0A{i}{s}	<TD>CALLF Rs + Ri <TD> Rl=PC; PC=Rs+Ri	 <TD>chamada indexada a rotina final	[v3]
+<TR><TD>0x4{OFF}	<TD>CALLF label	<TD> Rl=PC; PC=PC+2*OFF	 <TD>chamada a rotina final
+<TR><TD>0x0400		<TD>RET		<TD> PC=*SP++		 <TD>retorno de rotina
+<TR><TD>0x04{n/2}	<TD>RET n	<TD> PC=*SP++; SP=SP-n	 <TD>retorno de rotina com elimina&ccedil;&atilde;o de n argumentos	[v3]
+<TR><TD>0x0B{s}		<TD>RETN Rs	<TD> PC=*SP++; SP=SP-Rs	 <TD>retorno de rotina com elimina&ccedil;&atilde;o de Rs argumentos	[v3]
+<TR><TD>0x05XX		<TD>RETF	<TD> PC=Rl		 <TD>retorno de rotina final
+<TR><TD>0x06XX		<TD>RFE		<TD> PC=*SP++; RE=*SP++	 <TD>retorno de excep&ccedil;&atilde;o
+<TR><TD>0x070{s}	<TD>JMP Rs	<TD> PC=Rs		 <TD>salto absoluto
+<TR><TD>0x07{off/2}{s}	<TD>JMP Rs + off<TD> PC=Rs+off		 <TD>salto baseado (absoluto)
+<TR><TD>0x08{i}{s}	<TD>JMP Rs + Ri	<TD> PC=Rs+Ri		 <TD>salto indexado (absoluto) [v3]
+<TR><TD>0x2{OFF}	<TD>JMP label	<TD> PC=PC+2*OFF	 <TD>salto incondicional
+<TR><TD>0x10{off}	<TD>JZ label	<TD> (Z==1)? PC=PC+2*off <TD>salto se zero
+<TR><TD>		<TD>JEQ label	<TD>			 <TD>salto se igual
+<TR><TD>0x11{off}	<TD>JNZ label	<TD> (Z==0)? PC=PC+2*off <TD>salto se n&atilde;o zero
+<TR><TD>		<TD>JNE label	<TD>			 <TD>salto se diferente
+<TR><TD>0x12{off}	<TD>JN label	<TD> (N==1)? PC=PC+2*off <TD>salto se negativo
+<TR><TD>0x13{off}	<TD>JNN label	<TD> (N==0)? PC=PC+2*off <TD>salto se n&atilde;o negativo
+<TR><TD>0x14{off}	<TD>JP label	<TD> ((N|Z)==0)? PC=PC+2*off <TD>salto se positivo
+<TR><TD>0x15{off}	<TD>JNP label	<TD> ((N|Z)==1)? PC=PC+2*off <TD>salto se n&atilde;o positivo
+<TR><TD>0x16{off}	<TD>JC label	<TD> (C==1)? PC=PC+2*off <TD>salto se transporte
+<TR><TD>		<TD>JB label	<TD>			 <TD>salto se menor sem sinal (below)
+<TR><TD>0x17{off}	<TD>JNC label	<TD> (C==0)? PC=PC+2*off <TD>salto se n&atilde;o transporte
+<TR><TD>		<TD>JAE label	<TD>			 <TD>salto se maior ou igual sem sinal (above-equal)
+<TR><TD>0x18{off}	<TD>JV label	<TD> (V==1)? PC=PC+2*off <TD>salto se excesso
+<TR><TD>0x19{off}	<TD>JNV label	<TD> (V==0)? PC=PC+2*off <TD>salto se n&atilde;o excesso
+<TR><TD>0x1A{off}	<TD>JA label	<TD> (A==1)? PC=PC+2*off <TD>salto se maior sem sinal (above)
+<TR><TD>0x1B{off}	<TD>JBE label	<TD> (A==0)? PC=PC+2*off <TD>salto se menor ou igual sem sinal (below-equal)
+<TR><TD>0x1C{off}	<TD>JLT label	<TD> ((N^V)==1)? PC=PC+2*off <TD>salto se menor
+<TR><TD>0x1D{off}	<TD>JLE label	<TD> (((N^V)|Z)==1)? PC=PC+2*off <TD>salto se menor ou igual
+<TR><TD>0x1E{off}	<TD>JGT label	<TD> (((N^V)|Z)==0)? PC=PC+2*off <TD>salto se maior
+<TR><TD>0x1F{off}	<TD>JGE label	<TD> ((N^V)==0)? PC=PC+2*off <TD>salto se maior ou igual
+</TABLE>
+onde <B>off: -254 .. +254 = (label-PC)/2</B>, <B>OFF: -254 .. +254 = (label-PC)/2</B>
+
+ <H2>Instru&ccedil;&otilde;es sint&eacute;cticas</H2>
+ As instru&ccedil;&otilde;es sint&eacute;cticas correspondem a instru&ccedil;&otilde;es que s&atilde;o geradas a partir de outras instru&ccedil;&otilde;es <I>assembly</I>.
+ No caso particular de duas instru&ccedil;&otilde;es equivalentes, como por exemplo <TT>JNC</TT> e <TT>JAE</TT>, ambos os nomes
+ foram inclu&iacute;dos na tabela.
+
+ Para carregar um regsito com um valor de 16 bits s&atilde;o necess&aacute;rias duas instru&ccedil;&otilde;es,
+ designadamente <TT>MOVL</TT> seguida de <TT>MOVH</TT>.
+ Para simplificar a codifica&ccedil;&atilde;o, evitando que o utilizador desdobre a constante em duas metades de 8 bits,
+ foi criada a instru&ccedil;&atilde;o sint&eacute;ctica <TT>MOV</TT> que recebe uma constante de 16 bits.
+ Assim,<BR>
+ <TT>MOV Rd, k</TT><BR>
+ com <B>k: 0 .. 65535</B> ou <B>k: -32768 .. 32767</B> ir&aacute; gerar a sequ&ecirc;ncia de instru&ccedil;&otilde;es<BR>
+ <TT>MOVL Rd, k(7..0);</TT><BR>
+ <TT>MOVH Rd, k(15..8)</TT><BR>
+
+ Outras instru&ccedil;&otilde;es sint&eacute;cticas incluem casos particulares de opera&ccedil;&otilde;es bit a bit
+<TABLE border>
+<TH>instru&ccedil;&atilde;o sint&eacute;ctica  <TH>opcode    <TH>instru&ccedil;&atilde;o original  <TH>descri&ccedil;&atilde;o<TH><TD>
+<TR><TD>EI		<TD>0x66D8	<TD>SET RE, 8	<TD>permite interrup&ccedil;&otilde;es
+<TR><TD>EI0		<TD>0x66D9	<TD>SET RE, 8	<TD>permite interrup&ccedil;&atilde;o 0
+<TR><TD>EI1		<TD>0x66DA	<TD>SET RE, 8	<TD>permite interrup&ccedil;&atilde;o 1
+<TR><TD>EI2		<TD>0x66DB	<TD>SET RE, 8	<TD>permite interrup&ccedil;&atilde;o 2
+<TR><TD>EI3		<TD>0x66DC	<TD>SET RE, 8	<TD>permite DMA
+<TR><TD>SETC		<TD>0x66D2	<TD>SET RE, 8	<TD>coloca a indica&ccedil;&atilde;o de transporte a 1
+<TR><TD>EDMA		<TD>0x66DD	<TD>SET RE, 8	<TD>permite interrup&ccedil;&otilde;es
+<TR><TD>DI		<TD>0x67D8	<TD>SET RE, 8	<TD>impede interrup&ccedil;&otilde;es
+<TR><TD>DI0		<TD>0x67D9	<TD>SET RE, 8	<TD>impede interrup&ccedil;&atilde;o 0
+<TR><TD>DI1		<TD>0x67DA	<TD>SET RE, 8	<TD>impede interrup&ccedil;&atilde;o 1
+<TR><TD>DI2		<TD>0x67DB	<TD>SET RE, 8	<TD>impede interrup&ccedil;&atilde;o 2
+<TR><TD>DI3		<TD>0x67DC	<TD>SET RE, 8	<TD>impede interrup&ccedil;&atilde;o 3
+<TR><TD>CLRC		<TD>0x67D2	<TD>SET RE, 8	<TD>coloca a indica&ccedil;&atilde;o de transporte a 0
+<TR><TD>DDMA		<TD>0x67DD	<TD>SET RE, 8	<TD>impede DMA
+<TR><TD>CPLC		<TD>0x68D2	<TD>SET RE, 8	<TD>complementa a indica&ccedil;&atilde;o de transporte
+</TABLE>
+
+<H1>Rotinas de biblioteca</H1>
+
+ Como apoio ao desenvolvimento de programas s&atilde;o distribu&iacute;das duas bibliotecas
+ <B>pepelib.asm</B> e <B>pepelibc.asm</B>.
+ Para utilizar estas rotinas basta inclu&iacute;-las nos argumentos do simulador,
+ por exemplo,<br>
+ <TT>pepe fibonacci.asm pepelib.asm -- 12</TT><BR>
+ para calcular o 12&ordm; termo da s&eacute;rie de fibonacci.
+
+ <H2>Chamadas ao sistema</H2>
+ Com o objectivo de oferecer alguma funcionalidade base, o simulador
+ disponibiliza um conjunto de rotinas acess&iacute;veis
+ atrav&eacute;s da interrup&ccedil;&atilde;o de software <TT>SWE</TT>.
+<TABLE border>
+<TH>c&oacute;digo  <TH>rotina    <TH>argumentos  <TH>descri&ccedil;&atilde;o<TH><TD>
+<TR><TD>240<TD>Exit		<TD>r0 = exit code	<TD>
+<TR><TD>241<TD>readINT	<TD>r0 = decimal integer (RET)	<TD>
+<TR><TD>242<TD>readBYTE	<TD>r0 = char (RET)	<TD>
+<TR><TD>243<TD>readSTRING	<TD>r0 = base memory address to save the read string	<TD>
+<TR><TD>244<TD>writeINT	<TD>r0 = integer (in decimal)	<TD>
+<TR><TD>245<TD>writeBYTE	<TD>r0 = char	<TD>
+<TR><TD>246<TD>writeSTRING	<TD>r0 = string base memory address	<TD>
+<TR><TD>247<TD>writeLN	<TD>
+<TR><TD>248<TD>writeHEX	<TD>r0 = integer (in hexadecimal)	<TD>
+<TR><TD>249<TD>sigALARM	<TD>r0 = seconds	<TD>
+<TR><TD>255<TD>brkpt		<TD>(not implemented)	<TD>
+</TABLE>
+ Assim, para escrever uma cadeia de caracteres, terminada em <I>null</I>,<br>
+ <TT>MOV r0, buf</TT><BR>
+ <TT>SWE 246</TT><BR>
+ onde <TT>buf</TT> &eacute; a origem da cadeia de caracteres a escrever.
+ Da mesma forma, a leitura de um valor inteiro decimal seguida da escrita do se dobro,<br>
+ <TT>SWE 241</TT><BR>
+ <TT>MUL r0, 2</TT><BR>
+ <TT>SWE 244</TT><BR>
+
+ <H2>Arranque do sistema</H2>
+ O simulador inicia-se no s&iacute;mbolo <B>start</B>.
+ Se este s&iacute;mbolo n&atilde;o existir o simulador inicia a sua execu&ccedil;&atilde;o no endere&ccedil;o zero.
+ A biblioteca <B>pepelib.asm</B> inclui uma vers&atilde;o simples desta rotina que
+ invoca a rotina <B>main</B> e, quando esta termina, faz uma chamada ao sistema
+ para terminar o simulador.
+
+ <H2>Bibliotecas distribu&iacute;das</H2>
+   As chamadas ao sistema podem ser acedidas atrav&eacute;s de normais invoca&ccedil;&otilde;es
+   de rotinas, sem necessidade de utilizar a interup&ccedil;&atilde;o de software <TT>SWE</TT>,
+   atrav&eacute;s da utiliza&ccedil;&atilde;o da biblioteca <B>pepelib.asm</B>.
+   Cada rotina desta biblioteca recolhe os argumentos na pilha,
+   posiciona-os nos registos pr&oacute;prios e faz a correspondente interrup&ccedil;&atilde;o de
+   software.
+<TABLE border>
+<TH>declara&ccedil;&atilde;o  <TH>descri&ccedil;&atilde;o<TH><TD>
+<TR><TD>void start(void);<TD>
+	'start' function that calls a 'main' function and then calls 'exit'
+
+<TR><TD>void exit(const int code);<TD>
+	terminate the program with the given 'code'
+<TR><TD>int printi(const int i);<TD>
+	print a decimal integer and returns the number of characters written
+<TR><TD>int printch(const char ch);<TD>
+	print a character and returns the number of characters written
+<TR><TD>int prints(const char *);<TD>
+	print a string and returns the number of characters written
+<TR><TD>int printLN(void);<TD>
+	print a new-line and returns the number of characters written
+<TR><TD>int printHEX(const int i);<TD>
+	print an unsigned hexadecimal integer
+	and returns the number of characters written
+<TR><TD>int readi(void);<TD>
+	reads and returns a decimal integer
+<TR><TD>int reads(char *buf);<TD>
+	reads to 'buf' and returns the number of read chars
+	      (assumes that 'buf' is large enough to hold the data)
+<TR><TD>char readch(void);<TD>
+	reads and returns a character
+</TABLE>
+
+   A biblioteca <B>pepelibc.asm</B> inclui vers&otilde;es simplificadas de
+   algumas rotinas de <B>C</B> &uacute;teis no desemvolvimento de pequenos
+   programas.
+   Desta forma, podem ser escritos programas simples em <B>C</B> e,
+   utilizando o compilador <B>lcc</B> com a extens&atilde;o para o PEPE
+   distribu&iacute;da (ficheiro <B>pepe.md</B>), executados pelo simulador.
+<TABLE border>
+<TH>declara&ccedil;&atilde;o  <TH>limita&ccedil;&atilde;o<TH><TD>
+<TR><TD>int printf(const char *, ...); <TD>only %d %c %s %% are supported
+<TR><TD>int atoi(const char *);<TD>
+<TR><TD>int strcmp(const char *, const char *);<TD>
+<TR><TD>char *strcpy(char *, const char *);<TD>
+<TR><TD>char *strcat(char *, const char *);<TD>
+<TR><TD>int scanf(const char *, ...); <TD>only %d %c %s are supported
+</TABLE>
+
+ <H2>Bibliotecas do utilizador</H2>
+ O utilizador pode definir novas bibliotecas, quer desenvolvento o
+ <I>assembly</I> manualmente quer gerando a partir de <B>C</B>, tendo
+ o cuidado de n&atilde;o utilizar a directiva <TT>PLACE</TT> para n&atilde;o
+ condicionar o posicionamento do c&oacute;digo final.
+ As nova bibliotecas podem ser inclu&iacute;da, por qualquer ordem, no
+ arranque do simulador.
+
+ <H2>Gera&ccedil;&atilde;o de PEPE a partir de C</H2>
+ Gera&ccedil;&atilde;o a partir de C com o lcc-4.2
+   utiliza&ccedil;&atilde;o do pepe.md no lcc-4.2
+   (procurar por exemplo "lcc-4.2 src" num motor de pesquisa ou
+   no endere&ccedil;o "http://sites.google.com/site/lccretargetablecompiler/downloads",
+   jan2010).
+<UL>
+<LI>adicionar 'xx(pepe,         pepeIR) \' ao src/bind.c
+<LI>na makefile:
+ <UL><LI> adicionar $Bpepe$O aos RCCOBJS
+     <LI>  adicionar $Bpepe.c aos RCCSRCS
+     <LI>  adicionar as linhas abaixo (preferencialmente perto das semelhantes)
+ <UL><LI>      $Bpepe$O: $Bpepe.c; $(CC) $(CFLAGS) -c -Isrc -o $@ $Bpepe.c
+     <LI>      $Bpepe.c: $Blburg$E src/pepe.md; $Blburg src/pepe.md $@
+ </UL></UL>
+<LI>fazer <B>make rcc</B>
+</UL>
+   Executar com <B>rcc -target=pepe</B>, por exemplo<BR>
+   <TT>rcc -target=pepe &lt; file.c &gt; file.asm</TT><BR>
+   O ficheiro n&atilde;o deve conter directivas do pr&eacute;-processador,
+   como <TT>#include</TT>, excepto se o compilador for
+   completamente configurado e gerado com <TT>make all</TT>,
+   caso em que deve ser invocado como um vulgar compilador de
+   <B>C</B> </TT>lcc -c file.c</B>
+   
+<H1>Simulador do processador</H1>
+
+  O simulador &eacute; composto por um &uacute;nico programa, podendo recorrer a bibliotecas
+  em <I>assembly</I> auxiliares.
+  O simulador processa directamente ficheiros <I>assembly</I>, permitindo
+  juntar v&aacute;rios destes ficheiros num s&oacute; programa, e inclui um <I>debuuger</I>
+  que permite visualizar a evolu&ccedil;&atilde;o do programa, analisar a mem&oacute;ria ou
+  modificar registos.
+
+ <H2>Argumentos de invoca&ccedil;&atilde;o</H2>
+  O simualdor &eacute; invocado com <B>pepe [options] [files] [-- program-arguments]</B>.
+  Por exemplo, <B>pepe fibonacci.asm pepelib.asm -q --12</B> para calcular
+  directamente, sem recurso ao <I>debugger</I>, o 12&orfm; termo da s&eacute;rie
+  de fibonacci.
+  <P>
+  Com <B>pepe div.asm</B> para calcular os divisores de um n&uacute;mero
+  (pedido ao utilizador interactivamente, com readINT), mas parando no
+  <I>debugger</I> antes da execu&ccedil;&atilde;o da primeira instru&ccedil;&atilde;o.
+  <P>
+  Para introduzir as instru&ccedil;&otilde;es interactivamente basta apenas <B>pepe</B>, mas
+  podem ser dadas op&ccedil;&otilde;es ou argumentos, por exemplo <B>pepe -- 144 texto</B>
+  em que os argumentos <TT>"144"</TT> e <TT>"texto"</TT> s&atilde;o guardado como
+  cadeia de caracteres no topo da pilha tal como em <B>C</B>. 
+  Assume que a rotina de arranque utiliza uma assinatura igual ao <B>main</B>
+  da linguagem <B>C</B>, ou seja, <B>int main(int argc, char *argv[]</B>.
+  Este aspecto pode ser verificado pelo valor inicial do <B>SP</B> (ou r12).
+
+  As op&ccedil;&otilde;es dispon&iacute;veis s&atilde;o
+<TABLE border>
+<TH>op&ccedil;&atilde;o  <TH>descri&ccedil;&atilde;o<TH><TD>
+<TR><TD>-o &lt;file&gt; <TD>guarda a mem&oacute;ria (64k) no ficheiro <B>&lt;file&gt;</B>.<BR>
+  Para executar um ficheiro com a mem&oacute;ria guardada basta indic&aacute;-lo em vez dos ficheiros em <I>assmbly</I>.
+<TR><TD>-s &lt;addr&gt; <TD>indica o endere&ccedil;o ou s&iacute;mbolo de arranque, em vez do <B>start</B>
+<TR><TD>-d <TD>comuta a flag de <I>debug</I>, inicialmente activa.
+<TR><TD>-n <TD>pemite instru&ccedil;&otilde;es s&oacute; dispon&iacute;veis na vers&atilde;o 3.
+<TR><TD>-e <TD>comuta a flag de processamento de excep&ccedil;&otilde;es.
+<TR><TD>-t <TD>comuta a flag de <I>trace</I>, o c&oacute;digo &eacute; impresso ao ser executado mas sem interven&ccedil;&atilde;o do utilizador.
+<TR><TD>-q <TD>quiet mode, sem <I>debug</I> ou <I>trace</I>.
+<TR><TD>-r <TD>results, imprime os resulatados do tempo de execu&ccedil;&atilde;o quando em quiet mode.
+<TR><TD>-i <TD>ignora erros e continua.
+<TR><TD>-v <TD>imprime a vers&atilde;o de software e termina.
+<TR><TD>-h <TD>online help.
+</TABLE>
+
+ <H2>Debugger (ou depurador)</H2>
+
+  O <I>debugger</I> (ou depurador) permite executar as instru&ccedil;&otilde;es linha a linha,
+  alterar o valor de um registo ou verificar o seu valor, avan&ccedil;ar at&eacute; um endere&ccedil;o
+  (ou rotina), ou inspecionar valores em mem&oacute;ria.
+
+  As op&ccedil;&otilde;es dispon&iacute;veis, quando est&aacute; dispon&iacute;vel o <I>debugger</I> indicado pela
+  <I>prompt</I> <B>ip=50> </B> (onde <B>50</B> &eacute; substitu&iacute;do pelo valor corrente
+  do contador de programa SP),
+<TABLE border>
+<TH>op&ccedil;&atilde;o  <TH>descri&ccedil;&atilde;o<TH><TD>
+<TR><TD>q <TD>quit: sair do debugger
+<TR><TD>x&lt;addr&gt; <TD>examine: imprimir o valor da posi&ccedil;&atilde;o de mem&oacute;ria <B>&lt;addr&gt;</B>, quer esta seja c&oacute;digo ou dados.
+<TR><TD>d&lt;start&gt; [&lt;end&gt;] <TD>disasm: desassemblar o c&oacute;digo do endere&ccedil;o
+	<B>&lt;start&gt;</B> at&eacute; ao endere&ccedil;o <B>&lt;end&gt;</B>, ou todas as instru&ccedil;&otilde;es a
+	partir <B>&lt;start&gt;</B>, at&eacute; uma posi&ccedil;&atilde;o nula (assume-se que se trata de mem&oacute;ria
+	n&atilde;o utilizada, mas pode n&atilde;o ser o caso pois valores nulos ou a instru&ccedil;&atilde;o <TT>NOP<TT>
+	produzem o mesmo efeito), se o outro argumento for omitido.
+<TR><TD>s <TD>symbols: imprime toda a tabela de s&iacute;mbolos.
+<TR><TD>s&lt;name&gt; <TD>symbol by name: imprime o valor de um s&iacute;mbolo dado.
+<TR><TD>s&lt;addr&gt; <TD>symbol at address: imprime os s&iacute;mbolos definidos para um dado endere&ccedil;o.
+<TR><TD>r&lt;num&gt; &lt;value&gt; <TD>set register &lt;num&gt; to &lt;value&gt;: coloca o registo <B>r&lt;num&gt; = &lt;value&gt;</B>.
+<TR><TD>c&lt;addr&gt; <TD>continue up to &lt;addr&gt;: continua at&eacute; o endere&ccedil;o <B>&lt;addr&gt;</B> ser atingido, ou at&eacute; o programa terminar se nunca for atingido.
+<TR><TD>&lt;pos_number&gt; <TD>step &lt;pos_number&gt; instructions: executa <B>&lt;pos_number&gt;</B> instru&ccedil;&otilde;es.
+<TR><TD>&lt;neg_number&gt; <TD>continue: a indica&ccedil;&atilde;o de um n&uacute;mero negativo faz com que o programa continue a executar sem voltar ao <i>debugger</I>.
+<TR><TD>&lt;return&gt; <TD>step: executa a instru&ccedil;&atilde;o corrente e passa &agrave; instru&ccedil;&atilde;o seguinte (o mesmo que o comando <B>1</B>).
+</TABLE>
+    s&oacute; os registos com valores diferentes de zero s&atilde;o mostrados.
+
+    Invocando <B>pepe div.asm</B>, o <I>debugger</I> inicia na rotina <B>start</B>
+<PRE>
+load asm/lib.asm: 56 lines
+$Id: pepe-1f2 (C)prs IST,2010  $
+? for help
+
+start: ; is a CODE symbol.
+    0:      start:
+    0: 3018   CALL 50 (main)
+ip=0&gt; 
+</PRE>
+    A linha <B>0: 3018   CALL 50 (main)</B> indica que na posi&ccedil;&atilde;o de mem&oacute;ria <B>0</B>
+    est&aacute; a instru&ccedil;&atilde;o com o c&oacute;digo <B>0x3018</B>. Seguidamente a instru&ccedil;&atilde;o &eacute;
+    apresentada em texto <I>assembly</I> para facilitar a leitura.
+    Caso a instru&ccedil;&atilde;o referia uma etiqueta, esta &eacute; apresentada entre parenteses.
+    Se a instru&ccedil;&atilde;o for referida por uma ou mais etiquetas, os seu nomes s&atilde;o apresentados
+    antes da instru&ccedil;&atilde;o, sem a indica&ccedil;&atilde;o do c&oacute;digo mas com a indica&ccedil;&atilde;o do tipo prov&aacute;vel
+    da etiqueta.
+
+Para executar a instru&ccedil;&atilde;o, e passar &agrave; instru&ccedil;&atilde;o seguinte, basta premir <B>&lt;enter&gt;</B>
+ou digitar <b>1</B> antes de premir <B>&lt;enter&gt;</B>.
+<PRE>
+ r12=65534 rer=2
+main: ; is a CODE symbol.
+   50:      main:
+   50: BA80   PUSH r8, 0
+ip=50&gt; 
+</PRE>
+  Na primeira linha s&atilde;o indicados os valores dos registos n&atilde;o nulos seguidos, na linha
+  seguinte, pelas etiquetas atribu&iacute;da aquele endere&ccedil;o.
+  Segue-se a linha do c&oacute;digo a executar e a <i>prompt</I> com a indica&ccedil;&atilde;o do valor do SP.
+  Notar que o endere&ccedil;o de retorno <B>rer</B> indica que quando a rotina <B>main</B>
+  retornar o programa continua no endere&ccedil;o <B>2</B>, ou seja
+<PRE>
+ip=50&gt; d 2 2
+    2: 01F0   SWE 240
+ip=50&gt; 
+</PRE>
+ A pilha cont&eacute;m apenas um valor <B>65536-65534=2</B> (ocupando 2 bytes) ou seja o endere&ccedil;o
+ de retorno, tamb&eacute;m salvaguardado pela instru&ccedil;&atilde;o <TT>CALL</TT>
+<PRE>
+ip=50&gt; x65534
+[65534] = 2 0x2 2 '' ""
+ip=50&gt; 
+</PRE>
+  O valor &eacute; impresso nas diversas bases pois o <I>debugger</I> deconhece o tipo de
+  valor a&iacute; colocado.
+ <p>
+  Para terminar deve dar o comando <B>q</B> e para executar sem voltar ao <i>debugger</I>
+  basta indicar um endere&ccedil;o inv&aacute;lido (por exemplo um valor negativo).
+
+<BR><HR>
+<ADDRESS>
+Pedro Reis Santos
+2010-01-06
+</ADDRESS>
+
+</body>
+</html>
